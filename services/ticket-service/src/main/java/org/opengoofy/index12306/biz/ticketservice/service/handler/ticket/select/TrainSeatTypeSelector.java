@@ -145,10 +145,13 @@ public final class TrainSeatTypeSelector {
                 .passengerSeatDetails(passengerSeatDetails)
                 .requestParam(requestParam)
                 .build();
+        // 只有「找不到该车型 + 席别的选座策略」才提示未适配；
+        // 选座过程中抛出的业务异常（如并发抢票时的「站点余票不足」）必须原样抛出，不能被误报成未适配
         try {
-            return abstractStrategyChoose.chooseAndExecuteResp(buildStrategyKey, selectSeatDTO);
+            abstractStrategyChoose.choose(buildStrategyKey, null);
         } catch (ServiceException ex) {
             throw new ServiceException("当前车次列车类型暂未适配，请购买G35或G39车次");
         }
+        return abstractStrategyChoose.chooseAndExecuteResp(buildStrategyKey, selectSeatDTO);
     }
 }
