@@ -113,6 +113,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
@@ -159,6 +160,12 @@ public class TicketServiceImpl extends ServiceImpl<TicketMapper, TicketDO> imple
     private final MultiLevelTicketQueryExecutor multiLevelTicketQueryExecutor;
     private TicketService ticketService;
 
+    @Value("${ticket.purchase.compensate-on-failure:true}")
+    private boolean compensateOnFailure;
+    @Value("${ticket.bench.enabled:false}")
+    private boolean benchEnabled;
+    @Value("${ticket.bench.order-fail-rate:0}")
+    private double benchOrderFailRate;
     @Value("${ticket.availability.cache-update.type:}")
     private String ticketAvailabilityCacheUpdateType;
     @Value("${framework.cache.redis.prefix:}")
@@ -450,10 +457,13 @@ public class TicketServiceImpl extends ServiceImpl<TicketMapper, TicketDO> imple
             RLock distributedLock = redissonClient.getFairLock(lockKey);
             distributedLockList.add(distributedLock);
         });
+        boolean purchased = false;
         try {
             localLockList.forEach(ReentrantLock::lock);
             distributedLockList.forEach(RLock::lock);
-            return ticketService.executePurchaseTickets(requestParam);
+            TicketPurchaseRespDTO purchaseResult = ticketService.executePurchaseTickets(requestParam);
+            purchased = true;
+            return purchaseResult;
         } finally {
             localLockList.forEach(localLock -> {
                 try {
@@ -467,6 +477,27 @@ public class TicketServiceImpl extends ServiceImpl<TicketMapper, TicketDO> imple
                 } catch (Throwable ignored) {
                 }
             });
+            // 令牌已扣减但下单失败（选座 / 落库 / 创建订单任一环节异常，DB 事务已回滚）：把本次扣掉的令牌还回去，
+            // 否则令牌永久少于实际可售座位，出现「DB 有座但提示无余票」
+            if (!purchased && compensateOnFailure) {
+                rollbackTakenToken(requestParam);
+            }
+        }
+    }
+
+    private void rollbackTakenToken(PurchaseTicketReqDTO requestParam) {
+        try {
+            org.opengoofy.index12306.biz.ticketservice.remote.dto.TicketOrderDetailRespDTO takenToken =
+                    new org.opengoofy.index12306.biz.ticketservice.remote.dto.TicketOrderDetailRespDTO();
+            takenToken.setTrainId(Long.parseLong(requestParam.getTrainId()));
+            takenToken.setDeparture(requestParam.getDeparture());
+            takenToken.setArrival(requestParam.getArrival());
+            takenToken.setPassengerDetails(requestParam.getPassengers().stream()
+                    .map(each -> TicketOrderPassengerDetailRespDTO.builder().seatType(each.getSeatType()).build())
+                    .toList());
+            ticketAvailabilityTokenBucket.rollbackInBucket(takenToken);
+        } catch (Throwable ex) {
+            log.error("[购票失败补偿] 归还令牌失败，请求参数：{}", JSON.toJSONString(requestParam), ex);
         }
     }
 
@@ -494,6 +525,10 @@ public class TicketServiceImpl extends ServiceImpl<TicketMapper, TicketDO> imple
                         .build())
                 .toList();
         saveBatch(ticketDOList);
+        if (benchEnabled && benchOrderFailRate > 0 && ThreadLocalRandom.current().nextDouble() < benchOrderFailRate) {
+            // 压测故障注入（仅 ticket.bench.enabled=true 时生效）：模拟座位已锁定、车票已落库后订单服务调用失败
+            throw new ServiceException("压测故障注入：订单服务调用失败");
+        }
         Result<String> ticketOrderResult;
         try {
             List<TicketOrderItemCreateRemoteReqDTO> orderItemCreateRemoteReqDTOList = new ArrayList<>();

@@ -30,6 +30,8 @@ import org.opengoofy.index12306.framework.starter.designpattern.strategy.Abstrac
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
 
@@ -43,6 +45,7 @@ public abstract class AbstractTrainPurchaseTicketTemplate implements IPurchaseTi
 
     private DistributedCache distributedCache;
     private String ticketAvailabilityCacheUpdateType;
+    private boolean compensateOnFailure = true;
     private TrainStationService trainStationService;
 
     /**
@@ -73,10 +76,22 @@ public abstract class AbstractTrainPurchaseTicketTemplate implements IPurchaseTi
             String arrival = requestParam.getRequestParam().getArrival();
             StringRedisTemplate stringRedisTemplate = (StringRedisTemplate) distributedCache.getInstance();
             List<RouteDTO> routeDTOList = trainStationService.listTakeoutTrainStationRoute(trainId, departure, arrival);
-            routeDTOList.forEach(each -> {
+            Runnable decreaseRemainingTicket = () -> routeDTOList.forEach(each -> {
                 String keySuffix = StrUtil.join("_", trainId, each.getStartStation(), each.getEndStation());
                 stringRedisTemplate.opsForHash().increment(TRAIN_STATION_REMAINING_TICKET + keySuffix, String.valueOf(requestParam.getSeatType()), -actualResult.size());
             });
+            // 选座发生在购票事务内：如果后续落库 / 创建订单失败，DB 座位会随事务回滚，
+            // 而这里直接扣减的 Redis 余票不会回滚。改为事务提交后再扣减，保证两者一致
+            if (compensateOnFailure && TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        decreaseRemainingTicket.run();
+                    }
+                });
+            } else {
+                decreaseRemainingTicket.run();
+            }
         }
         return actualResult;
     }
@@ -87,5 +102,6 @@ public abstract class AbstractTrainPurchaseTicketTemplate implements IPurchaseTi
         trainStationService = ApplicationContextHolder.getBean(TrainStationService.class);
         ConfigurableEnvironment configurableEnvironment = ApplicationContextHolder.getBean(ConfigurableEnvironment.class);
         ticketAvailabilityCacheUpdateType = configurableEnvironment.getProperty("ticket.availability.cache-update.type", "");
+        compensateOnFailure = configurableEnvironment.getProperty("ticket.purchase.compensate-on-failure", Boolean.class, true);
     }
 }
