@@ -26,21 +26,34 @@ for port in $PORTS; do
     echo "端口 $port 已被占用（IDEA 里的服务先停掉，或 bash bench/stop-nodes.sh）"
     exit 1
   fi
+done
+
+# 依次启动：一个节点就绪后再起下一个
+# 聚合模式下服务间调用走 aggregation.remote-url，不依赖 Nacos 服务发现，关闭注册避免多节点同时注册失败
+for port in $PORTS; do
   echo ">>> 启动节点 :$port"
   nohup java -Xms1g -Xmx1g -jar "$JAR" \
     --server.port="$port" \
     --ticket.bench.enabled=true \
+    --spring.cloud.nacos.discovery.register-enabled=false \
     --mybatis-plus.configuration.log-impl=org.apache.ibatis.logging.nologging.NoLoggingImpl \
     > "$LOG_DIR/node-$port.log" 2>&1 &
-  echo $! > "$LOG_DIR/node-$port.pid"
-done
-
-for port in $PORTS; do
+  pid=$!
+  echo $pid > "$LOG_DIR/node-$port.pid"
   printf ">>> 等待 :%s 就绪" "$port"
-  for i in $(seq 1 120); do
-    if check_node "http://127.0.0.1:$port"; then echo " ok"; break; fi
+  ok=0
+  for i in $(seq 1 90); do
+    if check_node "http://127.0.0.1:$port"; then ok=1; break; fi
+    if ! kill -0 "$pid" 2>/dev/null; then break; fi
     printf "."
     sleep 2
-    if [ "$i" = 120 ]; then echo " 超时，查看 $LOG_DIR/node-$port.log"; exit 1; fi
   done
+  if [ "$ok" = 1 ]; then
+    echo " ok"
+  else
+    echo " 失败，日志 $LOG_DIR/node-$port.log："
+    grep -nE 'APPLICATION FAILED|Caused by|ERROR' "$LOG_DIR/node-$port.log" | head -15 || true
+    bash "$BENCH_DIR/stop-nodes.sh"
+    exit 1
+  fi
 done
