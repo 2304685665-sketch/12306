@@ -13,7 +13,7 @@ OUT="$RESULT_DIR/ALL-oversell-$TS.txt"
   echo "ticket-service key：$before -> $after"
 } 2>&1 | tee "$OUT"
 bash "$BENCH_DIR/stop-nodes.sh" >/dev/null 2>&1
-SKIP_BUILD=1 bash "$BENCH_DIR/start-nodes.sh" 2>&1 | tee -a "$OUT" || { echo "节点启动失败" | tee -a "$OUT"; exit 1; }
+SKIP_BUILD="${SKIP_BUILD:-0}" bash "$BENCH_DIR/start-nodes.sh" 2>&1 | tee -a "$OUT" || { echo "节点启动失败" | tee -a "$OUT"; exit 1; }
 trap 'bash "$BENCH_DIR/stop-nodes.sh"' EXIT
 echo "== 实验 2b：双节点并发抢票 ==" | tee -a "$OUT"
 bash "$BENCH_DIR/run-oversell-bench.sh" 2>&1 | grep -v 'level=warning' | tee -a "$OUT"

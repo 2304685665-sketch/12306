@@ -37,6 +37,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -70,6 +71,11 @@ public class SeatServiceImpl extends ServiceImpl<SeatMapper, SeatDO> implements 
 
     @Override
     public List<Integer> listSeatRemainingTicket(String trainId, String departure, String arrival, List<String> trainCarriageList) {
+        // 没有可用车厢（并发抢票时座位已在加锁期间被前面的请求选完）直接返回空：
+        // 否则 Mapper 里的 carriage_number in <foreach> 会拼出 "in group by" 的非法 SQL，被当成系统异常而不是「余票不足」
+        if (CollUtil.isEmpty(trainCarriageList)) {
+            return Collections.emptyList();
+        }
         String keySuffix = StrUtil.join("_", trainId, departure, arrival);
         if (distributedCache.hasKey(TRAIN_STATION_CARRIAGE_REMAINING_TICKET + keySuffix)) {
             StringRedisTemplate stringRedisTemplate = (StringRedisTemplate) distributedCache.getInstance();

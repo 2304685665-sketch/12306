@@ -100,7 +100,9 @@ public final class TicketAvailabilityTokenBucket {
         Boolean hasKey = distributedCache.hasKey(tokenBucketHashKey);
         if (!hasKey) {
             RLock lock = redissonClient.getLock(String.format(LOCK_TICKET_AVAILABILITY_TOKEN_BUCKET, requestParam.getTrainId()));
-            if (!lock.tryLock()) {
+            // 冷启动时多个请求会同时发现令牌桶不存在：原来 tryLock() 不等待，抢不到锁的请求直接失败；
+            // 改为最多等待 3 秒，拿到锁后双重检查，桶已被别的请求构建好就直接复用
+            if (!tryLockQuietly(lock, TOKEN_BUCKET_INIT_WAIT_SECONDS)) {
                 throw new ServiceException("购票异常，请稍候再试");
             }
             try {
@@ -200,5 +202,16 @@ public final class TicketAvailabilityTokenBucket {
 
     public void initializeTokens() {
 
+    }
+
+    private static final long TOKEN_BUCKET_INIT_WAIT_SECONDS = 3L;
+
+    private static boolean tryLockQuietly(RLock lock, long waitSeconds) {
+        try {
+            return lock.tryLock(waitSeconds, TimeUnit.SECONDS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 }
