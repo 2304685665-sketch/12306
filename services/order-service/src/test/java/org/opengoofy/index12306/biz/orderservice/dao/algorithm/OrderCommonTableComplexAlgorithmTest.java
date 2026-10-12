@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 package org.opengoofy.index12306.biz.orderservice.dao.algorithm;
 
 import org.apache.shardingsphere.sharding.api.sharding.complex.ComplexKeysShardingValue;

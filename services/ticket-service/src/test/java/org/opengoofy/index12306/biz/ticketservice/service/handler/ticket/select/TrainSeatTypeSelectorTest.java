@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-
 package org.opengoofy.index12306.biz.ticketservice.service.handler.ticket.select;
 
 import org.junit.jupiter.api.Test;
