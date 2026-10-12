@@ -53,17 +53,34 @@ ensure_k6() {
   fi
 }
 
-# 默认 java 低于 17 时，自动切换到本机已安装的 17+
+java_major() {
+  "$1" -version 2>&1 | awk -F'"' '/version/{print $2}' | sed 's/^1\.//' | cut -d. -f1
+}
+
+# 项目用的 Lombok 1.18.30 只支持到 JDK 21：默认 java 不在 17~21 时，
+# 依次尝试本机已安装的 JDK 17 / 21，最后用 bench/.jdk 里自带的 JDK 17
 ensure_java17() {
-  local major
-  major="$(java -version 2>&1 | awk -F'"' '/version/{print $2}' | cut -d. -f1)"
-  if [ "${major:-0}" -lt 17 ] && [ -x /usr/libexec/java_home ]; then
-    local home
-    home="$(/usr/libexec/java_home -v 17+ 2>/dev/null || true)"
-    if [ -n "$home" ]; then export JAVA_HOME="$home" PATH="$home/bin:$PATH"; fi
+  local cur home m
+  cur="$(java_major java)"
+  if [ "${cur:-0}" -ge 17 ] && [ "${cur:-0}" -le 21 ]; then return 0; fi
+  if [ -x /usr/libexec/java_home ]; then
+    for v in 17 21; do
+      home="$(/usr/libexec/java_home -v "$v" 2>/dev/null || true)"
+      if [ -n "$home" ] && [ "$(java_major "$home/bin/java")" = "$v" ]; then
+        export JAVA_HOME="$home" PATH="$home/bin:$PATH"
+        echo ">>> 默认 java 是 ${cur}，切换到 JDK ${v}：$home"
+        return 0
+      fi
+    done
   fi
-  major="$(java -version 2>&1 | awk -F'"' '/version/{print $2}' | cut -d. -f1)"
-  [ "${major:-0}" -ge 17 ] || { echo "需要 JDK 17+，当前：$(java -version 2>&1 | head -1)"; return 1; }
+  home="$(ls -d "$BENCH_DIR"/.jdk/*/Contents/Home "$BENCH_DIR"/.jdk/* 2>/dev/null | while read -r d; do [ -x "$d/bin/java" ] && echo "$d" && break; done)"
+  if [ -n "$home" ]; then
+    export JAVA_HOME="$home" PATH="$home/bin:$PATH"
+    echo ">>> 默认 java 是 ${cur}，使用项目内置 JDK $(java_major "$home/bin/java")：$home"
+    return 0
+  fi
+  echo "需要 JDK 17~21（当前 ${cur}），且没有找到可用的 JDK"
+  return 1
 }
 
 require() {
