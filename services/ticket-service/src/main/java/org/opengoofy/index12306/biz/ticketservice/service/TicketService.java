@@ -52,6 +52,22 @@ public interface TicketService extends IService<TicketDO> {
     TicketPageQueryRespDTO pageListTicketQueryV2(TicketPageQueryReqDTO requestParam);
 
     /**
+     * 根据条件分页查询车票V3：Caffeine 一级缓存 + Redis 二级缓存，余票一次 Pipeline 读取
+     *
+     * @param requestParam  分页查询车票请求参数
+     * @param withRemaining 是否读取余票（仅压测定位开销时为 false）
+     * @return 查询车票返回结果
+     */
+    TicketPageQueryRespDTO pageListTicketQueryV3(TicketPageQueryReqDTO requestParam, boolean withRemaining);
+
+    /**
+     * 根据条件分页查询车票V3
+     */
+    default TicketPageQueryRespDTO pageListTicketQueryV3(TicketPageQueryReqDTO requestParam) {
+        return pageListTicketQueryV3(requestParam, true);
+    }
+
+    /**
      * 购买车票
      *
      * @param requestParam 车票购买请求参数

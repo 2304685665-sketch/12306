@@ -50,7 +50,7 @@ public class TicketController {
      */
     @GetMapping("/api/ticket-service/ticket/query")
     public Result<TicketPageQueryRespDTO> pageListTicketQuery(TicketPageQueryReqDTO requestParam) {
-        return Results.success(ticketService.pageListTicketQueryV1(requestParam));
+        return Results.success(ticketService.pageListTicketQueryV3(requestParam));
     }
 
     /**

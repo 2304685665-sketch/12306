@@ -46,7 +46,18 @@ public final class OrderIdGeneratorManager implements InitializingBean {
      * @return 订单 ID
      */
     public static String generateId(long userId) {
-        return DISTRIBUTED_ID_GENERATOR.generateId() + String.valueOf(userId % 1000000);
+        return buildOrderSn(DISTRIBUTED_ID_GENERATOR.generateId(), userId);
+    }
+
+    /**
+     * 订单号 = 分布式 ID + 用户 ID 后 6 位（基因位）
+     *
+     * 基因位必须补零到固定 6 位：分片算法按「订单号后 6 位」和「用户 ID 后 6 位」路由，
+     * 如果 userId % 1000000 不足 6 位（约 10% 的用户），订单号后 6 位会混入分布式 ID 的数字，
+     * 导致按 order_sn 查询（取消 / 关单 / 支付回调）路由到与写入时不同的分表。
+     */
+    public static String buildOrderSn(long distributedId, long userId) {
+        return distributedId + String.format("%06d", userId % 1000000);
     }
 
     @Override

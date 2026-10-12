@@ -73,6 +73,7 @@ import org.opengoofy.index12306.biz.ticketservice.service.TrainStationService;
 import org.opengoofy.index12306.biz.ticketservice.service.cache.SeatMarginCacheLoader;
 import org.opengoofy.index12306.biz.ticketservice.service.handler.ticket.dto.TokenResultDTO;
 import org.opengoofy.index12306.biz.ticketservice.service.handler.ticket.dto.TrainPurchaseTicketRespDTO;
+import org.opengoofy.index12306.biz.ticketservice.service.handler.ticket.query.MultiLevelTicketQueryExecutor;
 import org.opengoofy.index12306.biz.ticketservice.service.handler.ticket.select.TrainSeatTypeSelector;
 import org.opengoofy.index12306.biz.ticketservice.service.handler.ticket.tokenbucket.TicketAvailabilityTokenBucket;
 import org.opengoofy.index12306.biz.ticketservice.toolkit.DateUtil;
@@ -155,6 +156,7 @@ public class TicketServiceImpl extends ServiceImpl<TicketMapper, TicketDO> imple
     private final RedissonClient redissonClient;
     private final ConfigurableEnvironment environment;
     private final TicketAvailabilityTokenBucket ticketAvailabilityTokenBucket;
+    private final MultiLevelTicketQueryExecutor multiLevelTicketQueryExecutor;
     private TicketService ticketService;
 
     @Value("${ticket.availability.cache-update.type:}")
@@ -275,6 +277,19 @@ public class TicketServiceImpl extends ServiceImpl<TicketMapper, TicketDO> imple
             });
             each.setSeatClassList(seatClassList);
         }
+        return TicketPageQueryRespDTO.builder()
+                .trainList(seatResults)
+                .departureStationList(buildDepartureStationList(seatResults))
+                .arrivalStationList(buildArrivalStationList(seatResults))
+                .trainBrandList(buildTrainBrandList(seatResults))
+                .seatClassTypeList(buildSeatClassList(seatResults))
+                .build();
+    }
+
+    @Override
+    public TicketPageQueryRespDTO pageListTicketQueryV3(TicketPageQueryReqDTO requestParam, boolean withRemaining) {
+        // L1 未命中且 Redis 也未预热时，复用 v1 的「分布式锁 + 双重检查」回源构建 Redis 缓存
+        List<TicketListDTO> seatResults = multiLevelTicketQueryExecutor.query(requestParam, withRemaining, () -> pageListTicketQueryV1(requestParam));
         return TicketPageQueryRespDTO.builder()
                 .trainList(seatResults)
                 .departureStationList(buildDepartureStationList(seatResults))

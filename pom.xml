@@ -30,6 +30,7 @@
         <java.version>17</java.version>
         <spotless-maven-plugin.version>2.22.1</spotless-maven-plugin.version>
         <skip.checkstyle.check>true</skip.checkstyle.check>
+        <skip.unit.tests>true</skip.unit.tests>
         <maven-common-plugin.version>3.1.0</maven-common-plugin.version>
         <maven.compiler.target>17</maven.compiler.target>
         <maven.compiler.source>17</maven.compiler.source>
@@ -89,7 +90,8 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${maven-common-plugin.version}</version>
                 <configuration>
-                    <skipTests>true</skipTests>
+                    <!-- 默认跳过；需要跑单测时 -Dskip.unit.tests=false -->
+                    <skipTests>${skip.unit.tests}</skipTests>
                 </configuration>
             </plugin>
 
