@@ -26,7 +26,7 @@ STATEMENTS="$(sql "select concat(
   from information_schema.columns
   where table_schema='12306' and data_type in ('char','varchar','tinytext','text','mediumtext','longtext')")"
 RESULT="$(echo "$STATEMENTS" | docker exec -i "$MYSQL_CONTAINER" mysql -uroot -proot --default-character-set=utf8mb4 -N -B 12306 2>&1 | grep -v 'Using a password' || true)"
-if echo "$RESULT" | grep -q '^ERROR'; then echo "$RESULT" | grep '^ERROR' | head -5; echo "修复出错，可用备份还原：${backup}"; exit 1; fi
+if grep '^ERROR' <<< "$RESULT" >/dev/null; then echo "$RESULT" | grep '^ERROR' | head -5; echo "修复出错，可用备份还原：${backup}"; exit 1; fi
 echo "$RESULT" | awk -F'\t' '$2 > 0 {printf "    %s：%s 行\n", $1, $2}'
 total="$(echo "$RESULT" | awk -F'\t' '{s += $2} END {print s + 0}')"
 
