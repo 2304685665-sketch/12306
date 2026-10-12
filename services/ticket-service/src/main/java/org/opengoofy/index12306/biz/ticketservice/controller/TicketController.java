@@ -17,6 +17,7 @@
 
 package org.opengoofy.index12306.biz.ticketservice.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.opengoofy.index12306.biz.ticketservice.dto.req.CancelTicketOrderReqDTO;
 import org.opengoofy.index12306.biz.ticketservice.dto.req.PurchaseTicketReqDTO;
@@ -27,13 +28,20 @@ import org.opengoofy.index12306.biz.ticketservice.dto.resp.TicketPageQueryRespDT
 import org.opengoofy.index12306.biz.ticketservice.dto.resp.TicketPurchaseRespDTO;
 import org.opengoofy.index12306.biz.ticketservice.remote.dto.PayInfoRespDTO;
 import org.opengoofy.index12306.biz.ticketservice.service.TicketService;
+import org.opengoofy.index12306.biz.ticketservice.service.ratelimit.RedisFixedWindowRateLimiter;
+import org.opengoofy.index12306.framework.starter.convention.exception.ClientException;
 import org.opengoofy.index12306.framework.starter.convention.result.Result;
 import org.opengoofy.index12306.framework.starter.web.Results;
+import org.opengoofy.index12306.frameworks.starter.user.core.UserContext;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+
+import java.util.Optional;
 
 /**
  * 车票控制层
@@ -44,12 +52,26 @@ import org.springframework.web.bind.annotation.RestController;
 public class TicketController {
 
     private final TicketService ticketService;
+    private final RedisFixedWindowRateLimiter rateLimiter;
+
+    /**
+     * 每用户每秒查询上限，0 表示不限流（默认）
+     */
+    @Value("${ticket.query.rate-limit.permits-per-second:0}")
+    private long queryPermitsPerSecond;
 
     /**
      * 根据条件查询车票
      */
     @GetMapping("/api/ticket-service/ticket/query")
-    public Result<TicketPageQueryRespDTO> pageListTicketQuery(TicketPageQueryReqDTO requestParam) {
+    public Result<TicketPageQueryRespDTO> pageListTicketQuery(TicketPageQueryReqDTO requestParam, HttpServletRequest request) {
+        if (queryPermitsPerSecond > 0) {
+            // 按用户（未登录按 IP）限制每秒查询次数，Redis Lua 原子「自增 + 判断」，多节点共享同一计数
+            String caller = Optional.ofNullable(UserContext.getUsername()).orElse(request.getRemoteAddr());
+            if (!rateLimiter.tryAcquire("ticket-query:" + caller, queryPermitsPerSecond, 1000L)) {
+                throw new ClientException("查询过于频繁，请稍后再试");
+            }
+        }
         return Results.success(ticketService.pageListTicketQueryV3(requestParam));
     }
 

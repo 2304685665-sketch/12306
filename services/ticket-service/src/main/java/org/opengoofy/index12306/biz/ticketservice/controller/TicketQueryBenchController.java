@@ -23,6 +23,7 @@ import org.opengoofy.index12306.biz.ticketservice.dto.resp.TicketPageQueryRespDT
 import org.opengoofy.index12306.biz.ticketservice.service.TicketService;
 import org.opengoofy.index12306.biz.ticketservice.service.cache.TicketQueryCacheBroadcaster;
 import org.opengoofy.index12306.biz.ticketservice.service.cache.TicketQueryLocalCache;
+import org.opengoofy.index12306.biz.ticketservice.service.ratelimit.RedisFixedWindowRateLimiter;
 import org.opengoofy.index12306.framework.starter.convention.exception.ClientException;
 import org.opengoofy.index12306.framework.starter.convention.result.Result;
 import org.opengoofy.index12306.framework.starter.web.Results;
@@ -47,6 +48,7 @@ public class TicketQueryBenchController {
     private final TicketService ticketService;
     private final TicketQueryLocalCache ticketQueryLocalCache;
     private final TicketQueryCacheBroadcaster ticketQueryCacheBroadcaster;
+    private final RedisFixedWindowRateLimiter rateLimiter;
 
     /**
      * version: v1（原始逐条读 Redis） / v2（Pipeline） / v3（L1 + Pipeline） / v3-static（v3 去掉余票读取，用于定位开销）
@@ -87,6 +89,22 @@ public class TicketQueryBenchController {
     public Result<Void> resetStats() {
         statsBaseline.set(ticketQueryLocalCache.totalHitAndMiss());
         return Results.success();
+    }
+
+    /**
+     * 限流对照：mode=lua（原子）/ naive（先 GET 再 INCR），返回本次是否放行
+     */
+    @PostMapping("/api/ticket-service/bench/rate-limit/acquire")
+    public Result<Boolean> acquire(@RequestParam("key") String key,
+                                   @RequestParam("limit") long limit,
+                                   @RequestParam("windowMs") long windowMs,
+                                   @RequestParam("mode") String mode) {
+        boolean allowed = switch (mode) {
+            case "lua" -> rateLimiter.tryAcquire("bench:" + key, limit, windowMs);
+            case "naive" -> rateLimiter.tryAcquireNaive("bench:" + key, limit, windowMs);
+            default -> throw new ClientException("unknown mode: " + mode);
+        };
+        return Results.success(allowed);
     }
 
     @PostMapping("/api/ticket-service/bench/local-cache/clear")

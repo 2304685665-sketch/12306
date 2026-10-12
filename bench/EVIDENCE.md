@@ -27,6 +27,12 @@
 | 余票不足被误报为「车型暂未适配」 | 本人修复 | `TrainSeatTypeSelector#distributeSeats` | d667dac | `TrainSeatTypeSelectorTest`（2 个） | 同上 |
 | 令牌桶冷启动 `tryLock()` 不等待 | 本人修复 | `TicketAvailabilityTokenBucket` | e696c02 | — | v2 其他失败 8→0 |
 
+## 3b. 自研 Redis Lua 原子限流（本人）
+
+| 项 | 归属 | 代码 | 测试 / 实验 | 状态 |
+|---|---|---|---|---|
+| 固定窗口限流：Lua 原子「自增 + 判断」，查票接口按用户限流（默认关闭，`ticket.query.rate-limit.permits-per-second`） | 本人 | `RedisFixedWindowRateLimiter`、`lua/ticket_query_rate_limit.lua`、`TicketController#pageListTicketQuery` | 脚本级：真实 Redis，50 并发 × 500 次、上限 50，3 轮 Lua 均放行 50，非原子 GET+INCR 放行 59 / 60 / 61；应用级：实验 6（双节点 3 轮 + 窗口重置） | 脚本级已验证，应用级**待实测** |
+
 ## 4. 业务一致性缺陷
 
 | 项 | 归属 | 代码 | 提交 | 测试 | 状态 |
@@ -53,5 +59,6 @@
 
 - 补偿逻辑自身失败（如归还令牌时 Redis 不可用）只记录错误日志，没有重试或对账任务。
 - 多席别并行选座（线程池路径）时，余票扣减不在事务线程内，仍是立即扣减。
+- 实验 1 目前为单轮数据，3 轮重复见 `run-query-repeat.sh`（待实测）。
 - 所有性能数据为单机（Apple M4）测量，节点、中间件、压测机在同一台机器上。
 - 基因法单测验证的是 19 位雪花量级 userId；userId 少于 6 位时路由仍不一致（上游设计限制）。
