@@ -4,14 +4,8 @@
 #       SKIP_BUILD=1 bash bench/start-nodes.sh
 #       PORTS="9005" bash bench/start-nodes.sh  # 只起一个节点
 source "$(dirname "$0")/common.sh"
-require java
 require docker
-
-JAVA_MAJOR="$(java -version 2>&1 | awk -F'"' '/version/{print $2}' | cut -d. -f1)"
-if [ "${JAVA_MAJOR:-0}" -lt 17 ]; then
-  echo "当前 java 版本为 $JAVA_MAJOR，需要 17+（可以 export JAVA_HOME=\$(/usr/libexec/java_home -v 17)）"
-  exit 1
-fi
+ensure_java17
 
 RUNNING="$(docker ps --format '{{.Names}}')"
 for c in "$MYSQL_CONTAINER" "$REDIS_CONTAINER" 12306-nacos 12306-rmq-namesrv 12306-rmq-broker; do

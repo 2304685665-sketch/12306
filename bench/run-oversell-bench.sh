@@ -2,7 +2,7 @@
 # 实验 2b：双节点并发抢票（500 用户 / 50 并发 / 库存 140），对比 v1（车次级分布式锁）与 v2（令牌桶 + 车次席别两级锁）
 # 用法：bash bench/run-oversell-bench.sh   （先 bash bench/start-nodes.sh 起 9005、9006）
 source "$(dirname "$0")/common.sh"
-require k6 "（brew install k6）"
+ensure_k6
 USERS="${USERS:-500}"
 VUS="${VUS:-50}"
 VERSIONS="${VERSIONS:-v1 v2}"

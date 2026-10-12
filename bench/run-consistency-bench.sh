@@ -2,7 +2,7 @@
 # 实验 2a：双节点本地缓存失效广播（本地失效 + Redis Pub/Sub + TTL 兜底）的全局生效耗时
 # 用法：bash bench/run-consistency-bench.sh   （先 bash bench/start-nodes.sh 起 9005、9006）
 source "$(dirname "$0")/common.sh"
-require k6 "（brew install k6）"
+ensure_k6
 ROUNDS="${ROUNDS:-100}"
 check_node "$NODE_A" || { echo "$NODE_A 不可用"; exit 1; }
 check_node "$NODE_B" || { echo "$NODE_B 不可用，需要两个节点"; exit 1; }

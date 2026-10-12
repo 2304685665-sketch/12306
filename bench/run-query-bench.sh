@@ -7,7 +7,7 @@
 # 另外两组：无车次线路（杭州->北京）v1 vs v3，验证空值缓存防穿透
 # 用法：bash bench/run-query-bench.sh     （先 bash bench/start-nodes.sh）
 source "$(dirname "$0")/common.sh"
-require k6 "（brew install k6）"
+ensure_k6
 require curl
 
 BASE="${BASE:-$NODE_A}"
