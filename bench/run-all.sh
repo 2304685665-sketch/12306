@@ -55,6 +55,9 @@ if stage "启动双节点" bash "$BENCH_DIR/start-nodes.sh"; then
   stage "实验 2a：双节点本地缓存失效广播" bash "$BENCH_DIR/run-consistency-bench.sh"
   stage "实验 2b：双节点并发抢票" bash "$BENCH_DIR/run-oversell-bench.sh"
   bash "$BENCH_DIR/reset-purchase-data.sh" >/dev/null 2>&1
+  bash "$BENCH_DIR/stop-nodes.sh" >/dev/null 2>&1
+  trap - EXIT
+  SKIP_BUILD=1 stage "实验 4：异步关单链路" bash "$BENCH_DIR/run-close-bench.sh"
 else
   echo "节点启动失败，日志：$LOG_DIR/node-9005.log / node-9006.log" | tee -a "$ALL"
   tail -40 "$LOG_DIR/node-9005.log" 2>/dev/null | tee -a "$ALL"

@@ -56,7 +56,8 @@ public class DelayCloseOrderSendProduce extends AbstractCommonSendProduceTemplat
                 .tag(environment.resolvePlaceholders(OrderRocketMQConstant.ORDER_DELAY_CLOSE_TAG_KEY))
                 .sentTimeout(2000L)
                 // RocketMQ 延迟消息级别 1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h
-                .delayLevel(14)
+                // 默认 14（10 分钟）；压测时可通过 order.delay-close.level 缩短，便于测量关单回滚时效
+                .delayLevel(environment.getProperty("order.delay-close.level", Integer.class, 14))
                 .build();
     }
 

@@ -74,6 +74,11 @@ public class DelayCloseOrderConsumer implements RocketMQListener<MessageWrapper<
     @Value("${ticket.availability.cache-update.type:}")
     private String ticketAvailabilityCacheUpdateType;
 
+    @Value("${ticket.bench.enabled:false}")
+    private boolean benchEnabled;
+
+    public static final String BENCH_DELAY_CLOSE_LATENCY_KEY = "index12306-ticket-service:bench:delay-close-latency-ms";
+
     @Idempotent(
             uniqueKeyPrefix = "index12306-ticket:delay_close_order:",
             key = "#delayCloseOrderEventMessageWrapper.getKeys()+'_'+#delayCloseOrderEventMessageWrapper.hashCode()",
@@ -127,6 +132,22 @@ public class DelayCloseOrderConsumer implements RocketMQListener<MessageWrapper<
                 log.error("[延迟关闭订单] 订单号：{} 回滚列车Cache余票失败", orderSn, ex);
                 throw ex;
             }
+            recordBenchLatency(delayCloseOrderEventMessageWrapper);
+        }
+    }
+
+    /**
+     * 压测开关打开时记录「订单消息发出 -> 座位 / 余票 / 令牌回滚完成」的耗时（毫秒）
+     */
+    private void recordBenchLatency(MessageWrapper<DelayCloseOrderEvent> messageWrapper) {
+        if (!benchEnabled || messageWrapper.getTimestamp() == null) {
+            return;
+        }
+        try {
+            long costMillis = System.currentTimeMillis() - messageWrapper.getTimestamp();
+            ((StringRedisTemplate) distributedCache.getInstance()).opsForList().leftPush(BENCH_DELAY_CLOSE_LATENCY_KEY, String.valueOf(costMillis));
+        } catch (Throwable ignored) {
+            // 压测统计失败不影响关单
         }
     }
 }

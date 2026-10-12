@@ -223,8 +223,11 @@ public class OrderServiceImpl implements OrderService {
         try {
             OrderDO updateOrderDO = new OrderDO();
             updateOrderDO.setStatus(OrderStatusEnum.CLOSED.getStatus());
+            // 带上「待支付」状态条件：同一订单的关单 / 取消并发重复执行时，只有一个能更新成功，
+            // 其余返回失败，消费端据此跳过座位与令牌回滚，避免重复归还导致超卖
             LambdaUpdateWrapper<OrderDO> updateWrapper = Wrappers.lambdaUpdate(OrderDO.class)
-                    .eq(OrderDO::getOrderSn, orderSn);
+                    .eq(OrderDO::getOrderSn, orderSn)
+                    .eq(OrderDO::getStatus, OrderStatusEnum.PENDING_PAYMENT.getStatus());
             int updateResult = orderMapper.update(updateOrderDO, updateWrapper);
             if (updateResult <= 0) {
                 throw new ServiceException(OrderCanalErrorCodeEnum.ORDER_CANAL_ERROR);

@@ -48,6 +48,7 @@ for port in $PORTS; do
     --ticket.bench.enabled=true \
     --spring.cloud.nacos.discovery.register-enabled=false \
     --mybatis-plus.configuration.log-impl=org.apache.ibatis.logging.nologging.NoLoggingImpl \
+    ${EXTRA_ARGS:-} \
     > "$LOG_DIR/node-$port.log" 2>&1 &
   pid=$!
   echo $pid > "$LOG_DIR/node-$port.pid"
