@@ -13,7 +13,7 @@ stage() {
   echo "== $name ==" | tee -a "$ALL"
   "$@" 2>&1 | tee -a "$ALL"
   local rc=${PIPESTATUS[0]}
-  if [ "$rc" != 0 ]; then FAILED="$FAILED\n- $name（退出码 $rc）"; echo "!! $name 失败，继续下一项" | tee -a "$ALL"; fi
+  if [ "$rc" != 0 ]; then FAILED="$FAILED\n- ${name}（退出码 ${rc}）"; echo "!! $name 失败，继续下一项" | tee -a "$ALL"; fi
   echo | tee -a "$ALL"
   return "$rc"
 }
@@ -37,7 +37,7 @@ prepare() {
   sql "select 1" >/dev/null || { echo "MySQL 不可用"; return 1; }
   local backup="$HOME/12306-backup-$TS.sql"
   docker exec "$MYSQL_CONTAINER" mysqldump -uroot -proot 12306 > "$backup" 2>/dev/null
-  echo ">>> 数据库已备份：$backup（$(du -h "$backup" | cut -f1)）"
+  echo ">>> 数据库已备份：${backup}（$(du -h "$backup" | cut -f1)）"
   echo "机器：$(sysctl -n machdep.cpu.brand_string 2>/dev/null || uname -m)，$(sysctl -n hw.ncpu 2>/dev/null) 核，内存 $(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 ))GB"
   echo "java：$(java -version 2>&1 | head -1)"
   echo "k6：$(k6 version 2>&1 | head -1)"
