@@ -25,13 +25,10 @@ redis_total_cmds() {
   rcli INFO stats | tr -d '\r' | awk -F: '/^total_commands_processed/{print $2}'
 }
 
-# 按模式删除 key（SCAN，不用 KEYS）
+# 按模式删除 key：在 Redis 容器内 SCAN + xargs 批量 DEL
+# （不要在 while read 循环里调 docker exec -i，它会吞掉循环的标准输入，导致只删第一个 key）
 redis_del_pattern() {
-  local keys
-  keys="$(rcli --scan --pattern "$1" | tr -d '\r')"
-  if [ -n "$keys" ]; then
-    echo "$keys" | while IFS= read -r k; do rcli DEL "$k" >/dev/null; done
-  fi
+  docker exec "$REDIS_CONTAINER" sh -c "redis-cli -a 123456 --no-auth-warning --scan --pattern '$1' | xargs -r -n 200 redis-cli -a 123456 --no-auth-warning DEL" >/dev/null
 }
 
 # 没有 k6 时自动下载到 bench/.bin（不需要 Homebrew）
