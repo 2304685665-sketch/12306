@@ -1,6 +1,8 @@
 # 证据索引：每项成果 → 归属 / 代码 / 提交 / 测试 / 实测
 
 分支：`perf/multilevel-cache`（基于 nageoffer/12306 `daf3a27`）。「上游已有」指原项目自带，「本人」指本分支新增或修改。
+单测共 31 个（ticket-service 28、order-service 3），在 JDK 17 下全部通过。
+
 复核方式：`git show <提交>` 看改动；单测 `./mvnw -pl services/order-service,services/ticket-service -am test -Dskip.unit.tests=false`；实验 `bash bench/run-all.sh`、`bash bench/run-new.sh`，数据见 `bench/RESULTS.md`。
 
 ## 1. 查询多级缓存（本人）
@@ -31,14 +33,18 @@
 
 | 项 | 归属 | 代码 | 测试 / 实验 | 状态 |
 |---|---|---|---|---|
-| 固定窗口限流：Lua 原子「自增 + 判断」，查票接口按用户限流（默认关闭，`ticket.query.rate-limit.permits-per-second`） | 本人 | `RedisFixedWindowRateLimiter`、`lua/ticket_query_rate_limit.lua`、`TicketController#pageListTicketQuery` | 脚本级：真实 Redis，50 并发 × 500 次、上限 50，3 轮 Lua 均放行 50，非原子 GET+INCR 放行 59 / 60 / 61；应用级：实验 6（双节点 3 轮 + 窗口重置） | 脚本级已验证，应用级**待实测** |
+| 固定窗口限流：Lua 原子「自增 + 判断」，查票接口按用户限流（默认关闭，`ticket.query.rate-limit.permits-per-second`） | 本人 | `RedisFixedWindowRateLimiter`、`lua/ticket_query_rate_limit.lua`、`TicketController#pageListTicketQuery` | 脚本级：真实 Redis，50 并发 × 500 次、上限 50，3 轮 Lua 均放行 50，非原子 GET+INCR 放行 59 / 60 / 61；应用级：实验 6（双节点 3 轮，按节点分别统计请求 / 放行；窗口重置；真实 `/ticket/query` 接入；关闭时回归） | 脚本级已验证，应用级**待实测** |
+| Redis 异常降级：默认 fail-open（放行并告警），`ticket.rate-limit.fail-open=false` 时 fail-closed | 本人 | `RedisFixedWindowRateLimiter#tryAcquire` | `RedisFixedWindowRateLimiterTest`（4 个：放行 / 拒绝 / 异常放行 / 异常拒绝） | 已验证（单测） |
+| 限流开关：关闭时完全不触达 Redis；超限时不进入查询 | 本人 | `TicketController#pageListTicketQuery` | `TicketControllerRateLimitTest`（3 个） | 已验证（单测） |
+
+选择 fail-open 的理由：查票是只读接口，限流是保护性措施，Redis 故障时宁可短时失去限流，也不让全部查票失败；购票链路的令牌桶仍由上游逻辑兜底。
 
 ## 4. 业务一致性缺陷
 
 | 项 | 归属 | 代码 | 提交 | 测试 | 状态 |
 |---|---|---|---|---|---|
 | 部分退票按整单金额退款 | 本人修复 | `TicketServiceImpl#commonTicketRefund` | bd0d4f1（测试，修复前 2/3 失败：退 2,313 元实际 4,040 元）→ 7f91db3（修复） | `TicketServiceImplRefundTest`（3 个） | 已验证（单测） |
-| 扣令牌后下单失败，令牌与 Redis 余票不恢复 | 本人修复 | `TicketServiceImpl#purchaseTicketsV2`、`AbstractTrainPurchaseTicketTemplate#executeResp` | 8b7cd5b | 实验 5（注入 20% 失败，补偿开 / 关对照） | **待实测** |
+| 扣令牌后下单失败，令牌与 Redis 余票不恢复 | 本人修复 | `TicketServiceImpl#purchaseTicketsV2`、`AbstractTrainPurchaseTicketTemplate#executeResp` | 8b7cd5b | `TicketServiceImplCompensationTest`（4 个：失败归还、补偿自身失败不覆盖原异常、成功不归还、关闭补偿保持上游行为）；实验 5（注入 20% 失败，补偿开 / 关对照） | 单测已验证，实验 5 **待实测** |
 | 并发重复关单可能重复回滚（读代码发现，未复现） | 本人加固 | `OrderServiceImpl#cancelTickOrder` UPDATE 加状态条件 | d9419b2 | 实验 4b（重复投递） | **待实测** |
 
 ## 5. 异步关单链路
@@ -57,7 +63,8 @@
 
 ## 已知局限（未覆盖）
 
-- 补偿逻辑自身失败（如归还令牌时 Redis 不可用）只记录错误日志，没有重试或对账任务。
+- 补偿逻辑自身失败（如归还令牌时 Redis 不可用）：已有单测保证不会覆盖原业务异常，但只记录错误日志，没有重试或对账任务；令牌桶会在「令牌为空」时由上游逻辑按 DB 余量刷新，属于延迟兜底而非即时修复。
+- 限流 fail-open 只在单测中模拟 Redis 异常，没有在真实环境里停掉 Redis 做故障演练。
 - 多席别并行选座（线程池路径）时，余票扣减不在事务线程内，仍是立即扣减。
 - 实验 1 目前为单轮数据，3 轮重复见 `run-query-repeat.sh`（待实测）。
 - 所有性能数据为单机（Apple M4）测量，节点、中间件、压测机在同一台机器上。

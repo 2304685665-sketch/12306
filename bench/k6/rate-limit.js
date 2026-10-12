@@ -13,19 +13,31 @@ const KEY = __ENV.KEY || `${MODE}-${Date.now()}`;
 const allowed = new Counter('allowed');
 const rejected = new Counter('rejected');
 const errors = new Counter('errors');
+// 按节点分别统计，证明两个应用节点都参与了请求、共享同一份计数
+const reqA = new Counter('req_a');
+const reqB = new Counter('req_b');
+const allowedA = new Counter('allowed_a');
+const allowedB = new Counter('allowed_b');
 
 export const options = {
   scenarios: { burst: { executor: 'shared-iterations', vus: Number(__ENV.VUS || 50), iterations: TOTAL, maxDuration: '5m' } },
 };
 
 export default function () {
-  const node = NODES[exec.scenario.iterationInTest % NODES.length];
+  const idx = exec.scenario.iterationInTest % NODES.length;
+  const node = NODES[idx];
+  (idx === 0 ? reqA : reqB).add(1);
   const res = http.post(`${node}/api/ticket-service/bench/rate-limit/acquire?key=${KEY}&limit=${LIMIT}&windowMs=60000&mode=${MODE}`);
   if (res.status !== 200 || res.json('code') !== '0') { errors.add(1); return; }
-  if (res.json('data') === true) allowed.add(1); else rejected.add(1);
+  if (res.json('data') === true) {
+    allowed.add(1);
+    (idx === 0 ? allowedA : allowedB).add(1);
+  } else {
+    rejected.add(1);
+  }
 }
 
 export function handleSummary(data) {
   const v = (n) => (data.metrics[n] ? data.metrics[n].values.count : 0);
-  return { stdout: [MODE, TOTAL, LIMIT, v('allowed'), v('rejected'), v('errors')].join('\t') + '\n' };
+  return { stdout: [MODE, TOTAL, LIMIT, v('allowed'), v('rejected'), v('errors'), `${v('req_a')}/${v('allowed_a')}`, `${v('req_b')}/${v('allowed_b')}`].join('\t') + '\n' };
 }

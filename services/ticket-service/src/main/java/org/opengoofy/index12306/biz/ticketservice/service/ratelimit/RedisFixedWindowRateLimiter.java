@@ -18,7 +18,9 @@
 package org.opengoofy.index12306.biz.ticketservice.service.ratelimit;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.opengoofy.index12306.framework.starter.cache.DistributedCache;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -37,6 +39,7 @@ import java.util.concurrent.TimeUnit;
  * tryAcquireNaive ：对照实现，先 GET 判断再 INCR，两步之间存在竞态，并发下会超发（仅用于压测对照）
  * </pre>
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class RedisFixedWindowRateLimiter {
@@ -47,9 +50,21 @@ public class RedisFixedWindowRateLimiter {
 
     private final DistributedCache distributedCache;
 
+    /**
+     * Redis 异常时是否放行，默认 true
+     */
+    @Value("${ticket.rate-limit.fail-open:true}")
+    private boolean failOpen = true;
+
     public boolean tryAcquire(String key, long limit, long windowMillis) {
-        Long result = template().execute(SCRIPT, List.of(KEY_PREFIX + key), String.valueOf(limit), String.valueOf(windowMillis));
-        return result != null && result == 1L;
+        try {
+            Long result = template().execute(SCRIPT, List.of(KEY_PREFIX + key), String.valueOf(limit), String.valueOf(windowMillis));
+            return result != null && result == 1L;
+        } catch (RuntimeException ex) {
+            // Redis 不可用时的降级策略：默认放行（查票是读接口，宁可短时失去限流也不拒绝正常用户），可配置为拒绝
+            log.warn("[限流] Redis 执行失败，key={}，按 {} 处理", key, failOpen ? "放行" : "拒绝", ex);
+            return failOpen;
+        }
     }
 
     public boolean tryAcquireNaive(String key, long limit, long windowMillis) {
