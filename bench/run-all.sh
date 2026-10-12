@@ -45,6 +45,7 @@ prepare() {
 }
 
 stage "准备环境" prepare || { echo "环境准备失败，后续实验无法执行，把上面的输出发给我。"; exit 1; }
+stage "修复数据库中文编码" bash "$BENCH_DIR/fix-db-charset.sh" || { echo "编码修复失败，后续实验结果不可信，先把上面的输出发给我。"; exit 1; }
 stage "实验 3：分片路由单测" bash "$BENCH_DIR/run-shard-test.sh"
 
 bash "$BENCH_DIR/stop-nodes.sh" >/dev/null 2>&1

@@ -15,10 +15,19 @@ done
 cd "$ROOT_DIR"
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
   echo ">>> 打包 aggregation-service（首次较慢）"
-  ./mvnw -q -DskipTests -pl services/aggregation-service -am package
+  rm -f "$ROOT_DIR/services/aggregation-service/target/index12306-aggregation-service.jar"
+  ./mvnw -q -DskipTests -pl services/aggregation-service -am clean package
 fi
 JAR="$ROOT_DIR/services/aggregation-service/target/index12306-aggregation-service.jar"
 [ -f "$JAR" ] || { echo "找不到 $JAR"; exit 1; }
+# 校验 jar 里确实是本次修改后的代码，避免用旧包压测
+TMP_LIB="$(mktemp -d)"
+(cd "$TMP_LIB" && unzip -q -o "$JAR" 'BOOT-INF/lib/index12306-ticket-service-*.jar')
+if ! unzip -l "$TMP_LIB"/BOOT-INF/lib/index12306-ticket-service-*.jar | grep -q 'TicketQueryBenchController'; then
+  echo "jar 中没有 TicketQueryBenchController，打包的不是最新代码"; rm -rf "$TMP_LIB"; exit 1
+fi
+rm -rf "$TMP_LIB"
+echo ">>> jar 校验通过：$(ls -l "$JAR" | awk '{print $6, $7, $8}')"
 
 PORTS="${PORTS:-9005 9006}"
 for port in $PORTS; do
