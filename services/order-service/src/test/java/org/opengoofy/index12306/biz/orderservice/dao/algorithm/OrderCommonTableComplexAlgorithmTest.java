@@ -96,6 +96,17 @@ class OrderCommonTableComplexAlgorithmTest {
         assertThat(mismatch).isGreaterThan(0);
     }
 
+    @Test
+    void boundaryGenes_zeroAndSingleDigit() {
+        long distributedId = 1_850_000_000_000_000_000L;
+        // userId % 1000000 == 0 -> 基因 "000000"；userId % 1000000 == 7 -> 基因 "000007"
+        for (long userId : new long[]{1_683_025_552_364_000_000L, 1_683_025_552_364_000_007L, 1_683_025_552_364_099_999L, 1_683_025_552_364_100_000L}) {
+            String orderSn = OrderIdGeneratorManager.buildOrderSn(distributedId, userId);
+            assertThat(orderSn).endsWith(String.valueOf(userId).substring(String.valueOf(userId).length() - 6));
+            assertThat(route("order_sn", orderSn)).as("userId=%d", userId).isEqualTo(route("user_id", String.valueOf(userId)));
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private String route(String column, String value) {
         Map<String, Collection<Comparable<?>>> shardingValues = new HashMap<>();
