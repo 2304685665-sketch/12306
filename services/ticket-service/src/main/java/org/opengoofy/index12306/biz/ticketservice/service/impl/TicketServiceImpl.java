@@ -623,12 +623,15 @@ public class TicketServiceImpl extends ServiceImpl<TicketMapper, TicketDO> imple
             refundReqDTO.setRefundTypeEnum(RefundTypeEnum.FULL_REFUND);
             refundReqDTO.setRefundDetailReqDTOList(passengerDetails);
         }
-        if (CollectionUtil.isNotEmpty(passengerDetails)) {
-            Integer partialRefundAmount = passengerDetails.stream()
-                    .mapToInt(TicketOrderPassengerDetailRespDTO::getAmount)
-                    .sum();
-            refundReqDTO.setRefundAmount(partialRefundAmount);
+        // 退款金额按「本次实际退票的乘客」求和：原实现对整单所有乘客求和，部分退票会把未退乘客的票款一起退掉
+        List<TicketOrderPassengerDetailRespDTO> refundPassengers = refundReqDTO.getRefundDetailReqDTOList();
+        if (CollectionUtil.isEmpty(refundPassengers)) {
+            throw new ServiceException("未找到需要退票的乘车人");
         }
+        int refundAmount = refundPassengers.stream()
+                .mapToInt(TicketOrderPassengerDetailRespDTO::getAmount)
+                .sum();
+        refundReqDTO.setRefundAmount(refundAmount);
         refundReqDTO.setOrderSn(requestParam.getOrderSn());
         Result<RefundRespDTO> refundRespDTOResult = payRemoteService.commonRefund(refundReqDTO);
         if (!refundRespDTOResult.isSuccess() && Objects.isNull(refundRespDTOResult.getData())) {
