@@ -1,0 +1,141 @@
+# 12306 本地开发中间件编排——聚合版。
+#
+# 只包含中间件（MySQL/Redis/Nacos/RocketMQ），gateway-service 和
+# aggregation-service 不在这里，由本机 JDK17 直接跑（见仓库里之前几轮
+# 环境核查的结论）。
+#
+# 本文件只负责"创建配置"，没有被执行过 `docker compose up`。
+#
+# 镜像选型说明：
+# - mysql:8.0 / redis:7.0 / nacos/nacos-server:v2.3.0，这三个 tag 本机已经
+#   缓存过（来自之前别的项目留下的、已停止的同名容器），选用相同 tag
+#   避免不必要的重新拉取，且已知这几个 tag 在本机能跑。
+# - apache/rocketmq:4.9.4，选这个版本是因为 `~/.m2` 里实际解析出来的
+#   rocketmq 客户端版本就是 4.9.4（来自 rocketmq-spring-boot-starter:2.2.3
+#   的依赖管理），服务端用同一个大版本降低协议不兼容的风险。这个镜像
+#   本机还没拉取过，架构（arm64）兼容性未验证。
+#
+# 只读说明：数据库名/密码/端口这些值，全部来自仓库里已有的
+# application.yaml / shardingsphere-config-dev.yaml，不是我新编的。
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: 12306-mysql
+    restart: unless-stopped
+    environment:
+      # root密码匹配 shardingsphere-config-dev.yaml 里 ds_0 的 username/password (root/root)
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: "12306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3307:3306"
+    volumes:
+      - 12306-mysql-data:/var/lib/mysql
+      # 挂载时改名，保证字母序上 01-schema 先于 02-seed-data 执行；
+      # MySQL 官方镜像只在数据目录为空的"首次启动"时执行 initdb.d 下的脚本，
+      # 之后改动这两个文件内容不会自动触发重新初始化。
+      - ./resources/db/12306-springboot.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./resources/data/12306-springboot.sql:/docker-entrypoint-initdb.d/02-seed-data.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - index12306-dev
+
+  redis:
+    image: redis:7.0
+    container_name: 12306-redis
+    restart: unless-stopped
+    # 密码匹配各 service application.yaml 里 spring.data.redis.password: 123456
+    command: ["redis-server", "--requirepass", "123456"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "123456", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - index12306-dev
+
+  nacos:
+    image: nacos/nacos-server:v2.3.0
+    container_name: 12306-nacos
+    restart: unless-stopped
+    environment:
+      MODE: standalone
+      # 项目里 spring.cloud.nacos.username/password 都是 nacos/nacos（Nacos默认账号）。
+      # 这里关掉鉴权，避免本地开发因为鉴权策略跟应用端配置不匹配而连不上——
+      # 具体 Nacos 2.3.0 这个镜像是否认这个环境变量名，未验证，见后文"需要实测"。
+      NACOS_AUTH_ENABLE: "false"
+      JVM_XMS: "512m"
+      JVM_XMX: "512m"
+    ports:
+      - "8848:8848"   # HTTP OpenAPI + 控制台
+      - "9848:9848"   # Nacos 2.x 客户端 gRPC 端口（SpringCloudAlibaba 2022.x 用的新协议，不能漏）
+      - "9849:9849"   # 集群间 gRPC 端口，standalone下不是必须，顺手一起映射
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8848' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - index12306-dev
+
+  rmq-namesrv:
+    image: apache/rocketmq:4.9.4
+    container_name: 12306-rmq-namesrv
+    restart: unless-stopped
+    command: ["sh", "mqnamesrv"]
+    ports:
+      - "9876:9876"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9876' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - index12306-dev
+
+  rmq-broker:
+    image: apache/rocketmq:4.9.4
+    container_name: 12306-rmq-broker
+    restart: unless-stopped
+    depends_on:
+      rmq-namesrv:
+        condition: service_started
+    environment:
+      NAMESRV_ADDR: "rmq-namesrv:9876"
+    command: ["sh", "mqbroker", "-c", "/home/rocketmq/rocketmq-4.9.4/conf/broker.conf"]
+    ports:
+      - "10909:10909"
+      - "10911:10911"
+      - "10912:10912"
+    volumes:
+      # broker.conf 的用途和里面每一项的理由见该文件自己的注释
+      - ./local-dev/rocketmq/broker.conf:/home/rocketmq/rocketmq-4.9.4/conf/broker.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/10911' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - index12306-dev
+
+volumes:
+  12306-mysql-data:
+    # 具名卷，只由 compose 创建和使用；本文件里没有任何会删除/清空它的配置
+    name: 12306-mysql-data
+
+networks:
+  index12306-dev:
+    name: index12306-dev

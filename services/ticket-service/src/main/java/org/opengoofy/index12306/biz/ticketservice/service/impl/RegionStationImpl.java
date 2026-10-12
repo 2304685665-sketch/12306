@@ -81,6 +81,9 @@ public class RegionStationImpl implements RegionStationService {
                     requestParam.getName()
             );
         }
+        if (requestParam.getQueryType() == null) {
+            throw new ClientException("查询失败，请检查查询参数是否正确");
+        }
         key  = REGION_STATION  + requestParam.getQueryType();
         LambdaQueryWrapper<RegionDO> queryWrapper = switch (requestParam.getQueryType()) {
             case 0 -> Wrappers.lambdaQuery(RegionDO.class)
