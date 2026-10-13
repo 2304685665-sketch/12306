@@ -14,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.opengoofy.index12306.biz.ticketservice.service.impl;
 
 import org.junit.jupiter.api.BeforeEach;
