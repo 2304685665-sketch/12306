@@ -3,6 +3,7 @@
 #   4a 时效：延迟级别临时缩短为 1s，50 个未支付订单，测「消息发出 -> 回滚完成」耗时与全部恢复所需时间
 #   4b 幂等：20 个未支付订单，每单并发投递 5 次关单消息（MQ 重投 / 业务重复两种），验证只回滚一次
 # 用法：bash bench/run-close-bench.sh   （会自行启停 9005、9006）
+#       ONLY_REPLAY=1 bash bench/run-close-bench.sh   只跑 4b
 source "$(dirname "$0")/common.sh"
 set +e
 ensure_k6
@@ -40,6 +41,7 @@ latency_stats() {
 }
 
 {
+if [ "${ONLY_REPLAY:-0}" != 1 ]; then
 echo "== 实验 4a：关单时效（延迟级别 1 = 1s，$USERS 个未支付订单）=="
 bash "$BENCH_DIR/stop-nodes.sh" >/dev/null 2>&1
 EXTRA_ARGS="--order.delay-close.level=1" SKIP_BUILD="${SKIP_BUILD:-0}" bash "$BENCH_DIR/start-nodes.sh" || { echo "节点启动失败"; exit 1; }
@@ -60,10 +62,13 @@ if [ "$restored" = 1 ]; then echo "购票结束后 $((t1 - t0)) ms 全部 $USERS
 printf "\nrollbacks\tavg_ms\tp50_ms\tp99_ms\tmax_ms   （订单消息发出 -> 回滚完成，已扣除 1000ms 延迟）\n"
 latency_stats 1000
 echo
+fi
 
 echo "== 实验 4b：关单消息重复投递（$REPLAY_USERS 单 × 每单并发 $REPLAY 次）=="
 bash "$BENCH_DIR/stop-nodes.sh" >/dev/null 2>&1
-SKIP_BUILD=1 bash "$BENCH_DIR/start-nodes.sh" >/dev/null || { echo "节点启动失败"; exit 1; }
+# 跳过 4a 时由 4b 负责打包
+if [ "${ONLY_REPLAY:-0}" = 1 ]; then build="${SKIP_BUILD:-0}"; else build=1; fi
+SKIP_BUILD="$build" bash "$BENCH_DIR/start-nodes.sh" >/dev/null || { echo "节点启动失败"; exit 1; }
 printf "replay_mode\torders\tdeliveries\trollbacks\ttoken\tremaining\tseats_locked\tclosed\tpending\n"
 for mode in redelivery duplicate; do
   bash "$BENCH_DIR/reset-purchase-data.sh" >/dev/null
