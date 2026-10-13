@@ -4,7 +4,7 @@
 
 - 每一项的代码位置、提交号、测试与实测数据：[bench/EVIDENCE.md](bench/EVIDENCE.md)
 - 全部实验的原始结果、条件与局限：[bench/RESULTS.md](bench/RESULTS.md)
-- 复现：`docker compose up -d` 后执行 `bash bench/run-all.sh`（实验 1～3），`bash bench/run-new.sh`（实验 4～6 与三轮基准）
+- 复现：`docker compose up -d` 后执行 `bash bench/run-all.sh`（实验 1～3），`bash bench/run-new.sh`（实验 4～6 与三轮基准），`bash bench/run-verify-fix.sh`（实验 7）
 
 环境：Apple M4 单机，节点、中间件与 k6 同机运行；数据为项目自带种子数据（G39 一等座 140 张）。
 
@@ -27,7 +27,7 @@
 | 售罄临界点空车厢拼出非法 SQL | 500 人抢票 49 次系统异常 | 0 |
 | 余票不足被误报为「车型暂未适配」 | 同上 49 次误报 | 0 |
 | 令牌桶冷启动 `tryLock()` 不等待 | 8 次「购票异常」 | 0 |
-| 余票缓存加载二次检查命中时返回空结果 | 20 并发 19 个请求在有票时被拒 | 单测通过；实测待复跑（`bench/run-verify-fix.sh`） |
+| 余票缓存加载二次检查命中时返回空结果 | 20 并发 19 个请求在有票时被拒 | 冷启动 50 并发 6 轮均 0 误拒 |
 
 并发抢票：双节点 500 人抢 140 张，恰好售出 140 张、0 重复座位，数据库、令牌、余票缓存三者一致。
 

@@ -28,7 +28,7 @@
 | 售罄临界空车厢生成 `in group by` 非法 SQL | 本人修复 | `SeatServiceImpl#listSeatRemainingTicket` | e696c02 | `SeatServiceImplTest` | v1 其他失败 49→0 |
 | 余票不足被误报为「车型暂未适配」 | 本人修复 | `TrainSeatTypeSelector#distributeSeats` | d667dac | `TrainSeatTypeSelectorTest`（2 个） | 同上 |
 | 令牌桶冷启动 `tryLock()` 不等待 | 本人修复 | `TicketAvailabilityTokenBucket` | e696c02 | — | v2 其他失败 8→0 |
-| 余票缓存加载二次检查命中时返回空结果，冷启动并发误判「无余票」 | 本人修复 | `SeatMarginCacheLoader#load` | 63e0762（测试，修复前失败）→ 4c2671e（修复） | `SeatMarginCacheLoaderTest` | 修复前：实验 5 中 20 并发有 19 个请求在有票时被拒；修复后实验 7 **待实测** |
+| 余票缓存加载二次检查命中时返回空结果，冷启动并发误判「无余票」 | 本人修复 | `SeatMarginCacheLoader#load` | 63e0762（测试，修复前失败）→ 4c2671e（修复） | `SeatMarginCacheLoaderTest` | 修复前：实验 5 中 20 并发有 19 个请求在有票时被拒；修复后：冷启动 50 并发 v1 / v2 各 3 轮均 50 成功、0 误拒（实验 7），实验 5 重跑误拒消失 |
 
 ## 3b. 自研 Redis Lua 原子限流（本人）
 

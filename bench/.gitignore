@@ -3,3 +3,4 @@ logs/
 .bin/
 .jdk/
 dump.rdb
+run-new.command
