@@ -121,6 +121,13 @@ public class SeatMarginCacheLoader {
                 }
                 // TODO LUA 脚本执行
                 trainStationRemainingTicketMaps.forEach((cacheKey, cacheMap) -> stringRedisTemplate.opsForHash().putAll(cacheKey, cacheMap));
+            } else {
+                // 二次检查命中：缓存已被先拿到锁的请求构建好，直接返回缓存中的余票。
+                // 原实现此处落到方法末尾返回空 Map，调用方把余票当作 0，并发冷启动时排队的请求被误判「无余票」
+                Map<String, String> cached = new LinkedHashMap<>();
+                stringRedisTemplate.opsForHash().entries(TRAIN_STATION_REMAINING_TICKET + keySuffix)
+                        .forEach((field, value) -> cached.put(String.valueOf(field), String.valueOf(value)));
+                return cached;
             }
         } finally {
             lock.unlock();
