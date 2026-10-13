@@ -33,8 +33,14 @@ echo ">>> jar 校验通过：$(ls -l "$JAR" | awk '{print $6, $7, $8}')"
 
 PORTS="${PORTS:-9005 9006}"
 for port in $PORTS; do
+  # 上一个实验的节点可能还在退出中，先等最多 15 秒
+  for i in $(seq 1 30); do
+    lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1 || break
+    sleep 0.5
+  done
   if lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
     echo "端口 $port 已被占用（IDEA 里的服务先停掉，或 bash bench/stop-nodes.sh）"
+    lsof -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | tail -n +2
     exit 1
   fi
 done

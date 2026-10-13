@@ -33,7 +33,7 @@
 
 | 项 | 归属 | 代码 | 测试 / 实验 | 状态 |
 |---|---|---|---|---|
-| 固定窗口限流：Lua 原子「自增 + 判断」，查票接口按用户限流（默认关闭，`ticket.query.rate-limit.permits-per-second`） | 本人 | `RedisFixedWindowRateLimiter`、`lua/ticket_query_rate_limit.lua`、`TicketController#pageListTicketQuery` | 脚本级：真实 Redis，50 并发 × 500 次、上限 50，3 轮 Lua 均放行 50，非原子 GET+INCR 放行 59 / 60 / 61；应用级：实验 6（双节点 3 轮，按节点分别统计请求 / 放行；窗口重置；真实 `/ticket/query` 接入；关闭时回归） | 脚本级已验证，应用级**待实测** |
+| 固定窗口限流：Lua 原子「自增 + 判断」，查票接口按用户限流（默认关闭，`ticket.query.rate-limit.permits-per-second`） | 本人 | `RedisFixedWindowRateLimiter`、`lua/ticket_query_rate_limit.lua`、`TicketController#pageListTicketQuery` | 脚本级：真实 Redis，50 并发 × 500 次、上限 50，3 轮 Lua 均放行 50，非原子 GET+INCR 放行 59 / 60 / 61；应用级（实验 6，经两个应用节点交替请求，3 轮）：Lua 均放行 50、Redis 计数 500；非原子放行 69 / 98 / 76；窗口重置 5/10 → 过期后 5/10 | 脚本级、应用级（压测接口）已验证；真实 `/ticket/query` 接入与关闭回归**待实测** |
 | Redis 异常降级：默认 fail-open（放行并告警），`ticket.rate-limit.fail-open=false` 时 fail-closed | 本人 | `RedisFixedWindowRateLimiter#tryAcquire` | `RedisFixedWindowRateLimiterTest`（4 个：放行 / 拒绝 / 异常放行 / 异常拒绝） | 已验证（单测） |
 | 限流开关：关闭时完全不触达 Redis；超限时不进入查询 | 本人 | `TicketController#pageListTicketQuery` | `TicketControllerRateLimitTest`（3 个） | 已验证（单测） |
 
@@ -52,7 +52,8 @@
 | 项 | 归属 | 代码 | 提交 | 状态 |
 |---|---|---|---|---|
 | RocketMQ 延时关单、回滚座位 / 余票 / 令牌、`@Idempotent` 消费幂等 | 上游已有 | `DelayCloseOrderConsumer` | — | — |
-| 关单时效、重复投递幂等实验 | 本人 | `run-close-bench.sh`、`DelayCloseBenchController` | d9419b2 | **待实测**（实验 4） |
+| 关单时效实验（4a） | 本人 | `run-close-bench.sh` | d9419b2 | 已实测：50 单延迟 1s 关单，延迟到期后回滚完成 P50 0.54s / P99 2.65s / 最大 6.4s；令牌、余票缓存、座位全部精确恢复到 140 |
+| 重复投递幂等实验（4b） | 本人 | `DelayCloseBenchController` | d9419b2 | **待实测**（首轮因端口未释放未执行） |
 
 ## 6. 分库分表
 
